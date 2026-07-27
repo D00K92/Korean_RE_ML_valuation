@@ -1,0 +1,43 @@
+# Local, zero-cost stack: Airflow (LocalExecutor) + MLflow + FastAPI + Streamlit.
+# No S3/MinIO, no cloud. DuckDB + local Parquet only.
+#
+# This is a scaffold — service images/build contexts are filled in on Days 9–12
+# (Airflow) and 11–12 (serving). Kept here so `make up` has a target from Day 1.
+
+services:
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow:/mlflow
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    command: uvicorn presale.serve.api:app --host 0.0.0.0 --port 8000
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mlflow
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/streamlit.Dockerfile
+    command: streamlit run src/presale/serve/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+  # Airflow (LocalExecutor) is added on Day 9 from the official compose;
+  # placeholder kept here intentionally minimal.

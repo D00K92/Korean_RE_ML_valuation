@@ -1,0 +1,44 @@
+# Non-secret tunables. Secrets come from environment (.env) only.
+# Loaded by src/presale/config.py. Region is a config value — never hardcoded.
+
+region:
+  name: "seoul_gyeonggi"
+  # MOLIT 법정동 5-digit region codes (LAWD_CD). Seoul (11xxx) + Gyeonggi (41xxx).
+  # Fill with the specific sigungu codes for the committed cluster.
+  lawd_codes: []
+
+label:
+  source: "molit_presale_resale"   # 분양권전매 실거래가; per m² resale price
+  unit: "krw_per_m2"
+  # Day-1 volume fallback: if resale volume is too thin, switch to apartment/officetel 매매.
+  fallback_source: "molit_apartment_trade"
+
+ingest:
+  start_ym: "202001"               # backfill 2020 -> present
+  reporting_lag_days: 30           # comp usable only if deal_date + lag <= prediction_date
+  rate_limit_qps: 2
+  max_retries: 5
+  retry_backoff_seconds: 2
+
+features:
+  comp_radii_m: [500, 1000, 3000]
+  comp_windows_days: [30, 60, 90]
+  # dynamic radius expansion for sparse areas: 500m -> 1km -> 3km -> district
+  dynamic_radius_expansion: true
+  min_comps: 3
+  macro_rate_delta_months: 6
+
+split:
+  # time-based only — never random shuffle
+  val_fraction: 0.15
+  test_fraction: 0.15
+
+paths:
+  data_root: "data"
+  raw_dir: "data/raw"              # Hive-partitioned Parquet (year-month, region)
+  feature_dir: "data/features"
+  duckdb_path: "data/presale.duckdb"
+
+mlflow:
+  experiment_name: "presale_resale_price"
+  registered_model_name: "presale_lgbm"

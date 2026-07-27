@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
+.env
+*.key
+
+# local data lake — never commit
+data/
+!data/.gitkeep
+
+# ml / tracking artifacts
+mlruns/
+mlartifacts/
+*.duckdb
+*.parquet
+*.pkl
+
+# airflow
+logs/
+airflow.db
+airflow.cfg
+standalone_admin_password.txt
+
+*.log
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
