@@ -1,8 +1,12 @@
 """Config + secret loader.
 
 Non-secret tunables live in config/settings.yaml; secrets come from the
-environment (.env, gitignored) only. Nothing here is hardcoded — region codes,
-comp radii, and windows are all read from the YAML.
+environment only, loaded from a gitignored .env via python-dotenv.
+
+SECURITY: .env is never read, printed, or logged. This module loads it into the
+process environment with python-dotenv and exposes only typed accessors — it
+never returns raw key strings to callers that would print them. See the
+"Secrets & .env safety" section in CLAUDE.md.
 """
 
 from __future__ import annotations
@@ -12,14 +16,24 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SETTINGS_YAML = PROJECT_ROOT / "config" / "settings.yaml"
+ENV_PATH = PROJECT_ROOT / ".env"
+
+# Load .env into os.environ once, at import. `override=False` means real
+# environment variables (e.g. CI secrets) win over the file.
+load_dotenv(dotenv_path=ENV_PATH, override=False)
 
 
 class Secrets(BaseSettings):
-    """API keys and endpoints — environment only."""
+    """API keys and endpoints — read from the process environment only.
+
+    Values are populated by python-dotenv's load_dotenv above; pydantic just
+    validates and types them. Never log or print an instance of this class.
+    """
 
     molit_api_key: str = ""
     ecos_api_key: str = ""
@@ -29,11 +43,19 @@ class Secrets(BaseSettings):
     mlflow_tracking_uri: str = "sqlite:///mlflow.db"
     mlflow_artifact_root: str = "./mlartifacts"
 
-    model_config = SettingsConfigDict(
-        env_file=str(PROJECT_ROOT / ".env"),
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(extra="ignore")
+
+    def missing_keys(self) -> list[str]:
+        """Names of required API keys that are still empty (for a startup check).
+
+        Returns key *names* only — never the values — so it is safe to print.
+        """
+        required = (
+            "molit_api_key",
+            "ecos_api_key",
+            "applyhome_api_key",
+        )
+        return [name for name in required if not getattr(self, name)]
 
 
 def load_yaml(path: Path = SETTINGS_YAML) -> dict[str, Any]:

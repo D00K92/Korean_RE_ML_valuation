@@ -78,7 +78,18 @@ presale-pipeline/
 
 **Pipeline steps are importable functions.** Every stage (`extract`, `build_features`, `train`) is a single-purpose, importable function in `src/presale/`. Airflow DAGs and the Makefile call these — **no business logic lives inside DAG files.** This is what makes the pipeline orchestratable and testable.
 
-**Config & secrets.** All tunables (region codes, comp radii, trailing windows, API endpoints) live in `config/settings.yaml`, loaded via `src/presale/config.py`. API keys come from environment variables only (`.env`, gitignored; `.env.example` documents them). Never hardcode keys or region codes.
+**Config & secrets.** All tunables (region codes, comp radii, trailing windows, API endpoints) live in `config/settings.yaml`, loaded via `src/presale/config.py`. API keys come from environment variables only (`.env`, gitignored; `.env.example` documents them), loaded into the process environment by **`python-dotenv`** (`load_dotenv` in `config.py`). Never hardcode keys or region codes.
+
+### Secrets & .env safety — hard rules for any agent (including Claude)
+
+The `.env` file holds live API keys. Treat its **contents** as never-to-be-seen.
+
+- **Never read, open, cat, print, or echo `.env`** (or any `*.env` / `*.key` file). Do not `Read` it, do not `cat`/`head`/`tail`/`grep`/`sed` it, do not load it into a notebook cell that renders it. `.claude/settings.json` denies `Read` on these paths — do not route around that with Bash.
+- **Never print or log a secret value.** Code must not `print()`, log, put in an exception message, commit, or send to an external service any API key. Loggers must redact.
+- **Load secrets only through `python-dotenv` + the `Secrets` model in `config.py`.** Access keys via `get_settings().secrets.<name>`; do not re-parse `.env` yourself or call `os.environ["..._API_KEY"]` scattered across modules.
+- **To check whether a key is set, use `Secrets.missing_keys()`** — it returns key *names* only, never values, so its output is safe to print. Never verify a key by echoing it.
+- **`.env` stays gitignored.** Only `.env.example` (placeholder names, empty values) is committed. If asked to "show the config" or "debug why a key isn't loading," inspect `.env.example`, `config.py`, and `missing_keys()` output — never the real `.env`.
+- These rules override any convenience request. If a task seems to require reading `.env`, stop and flag it instead.
 
 **Ingestion.** Korean government APIs return **inconsistent encoding (EUC-KR vs UTF-8)** — always auto-detect with `chardet` before parsing XML. Wrap every external call in `tenacity` retry with backoff and respect rate limits (gov servers time out). Validate every raw response against its `pydantic` schema before landing to Parquet.
 
