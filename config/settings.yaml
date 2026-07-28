@@ -20,6 +20,114 @@ ingest:
   max_retries: 5
   retry_backoff_seconds: 2
 
+# API endpoints + params. Secrets (service keys) come from .env, never here.
+# Verified against live docs 2026-07-28. Fields marked "# TODO verify" need the
+# logged-in data.go.kr Swagger to lock exact names.
+sources:
+
+  # -- MOLIT 분양권전매 실거래가 -- training label + features (XML, EUC-KR) --
+  molit:
+    role: "label"                  # 거래금액 / 전용면적 = KRW per m²
+    gateway: "apis.data.go.kr"     # classic feed; wants the ENCODED service key
+    key_env: "MOLIT_API_KEY"
+    format: "xml"                  # chardet auto-detect (EUC-KR vs UTF-8)
+    encoding_autodetect: true
+    base_url: "https://apis.data.go.kr/1613000/RTMSDataSvcSilvTrade"
+    operation: "getRTMSDataSvcSilvTrade"   # 아파트 분양권전매 신고 자료
+    request_params:                # loop over LAWD_CD x DEAL_YMD
+      lawd_cd: "LAWD_CD"           # 5-digit 시군구 (from region.lawd_codes)
+      deal_ymd: "DEAL_YMD"         # YYYYMM
+      page_no: "pageNo"
+      num_of_rows: "numOfRows"
+    response_fields:               # per-row (Korean source names)
+      complex_name: "단지명"
+      exclusive_area_m2: "전용면적"
+      floor: "층"
+      price: "거래금액"            # comma-formatted string
+      deal_year: "년"
+      deal_month: "월"
+      deal_day: "일"
+      dong: "법정동"
+      jibun: "지번"
+    fallback:                      # Day-1 volume fallback -> apartment 매매
+      base_url: "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade"
+      operation: "getRTMSDataSvcAptTrade"
+
+  # -- ECOS (Bank of Korea) -- monthly macro features --
+  ecos:
+    role: "macro"
+    key_env: "ECOS_API_KEY"
+    format: "json"
+    # StatisticSearch/{KEY}/{format}/kr/{start}/{end}/{STAT}/{cycle}/{s}/{e}/{item}
+    base_url: "https://ecos.bok.or.kr/api/StatisticSearch"
+    cycle: "M"                     # monthly
+    series:                        # STAT_CODE / ITEM_CODE — TODO verify vs live ECOS
+      base_rate:      { stat_code: "722Y001", item_code: "0101000" }  # 한국은행 기준금리
+      mortgage_yield: { stat_code: "121Y002", item_code: "" }        # 예금은행 주담대 금리
+      m2:             { stat_code: "101Y004", item_code: "" }        # M2 통화량
+      sentiment_csi:  { stat_code: "511Y002", item_code: "" }        # 소비자심리지수
+
+  # -- VWorld Geocoder 2.0 -- complex address -> lat/lon (geocode once, cache) --
+  geocode:
+    role: "spatial"
+    provider: "vworld"             # or "kakao" — only one key needed
+    key_env: "VWORLD_API_KEY"
+    base_url: "https://api.vworld.kr/req/address"
+    request_params:
+      service: "address"
+      request: "getCoord"          # address -> coordinates
+      version: "2.0"
+      crs: "EPSG:4326"             # WGS84 lon/lat
+      format: "json"
+      refine: "true"
+      simple: "false"
+    address_type_order: ["PARCEL", "ROAD"]   # try 지번 first, fall back to 도로명
+    response_fields:
+      status: "response.status"    # "OK" | "NOT_FOUND" | "ERROR"
+      lon: "response.result.point.x"
+      lat: "response.result.point.y"
+    kakao_fallback:                # alternative provider if using Kakao Local
+      key_env: "KAKAO_REST_API_KEY"
+      base_url: "https://dapi.kakao.com/v2/local/search/address.json"
+      auth_header: "Authorization: KakaoAK {key}"
+    # subway station coords are a STATIC file downloaded once, not a live API
+    station_coords_file: "data/reference/subway_stations.csv"
+
+  # -- Applyhome (청약홈 분양정보) -- INFERENCE LIST ONLY, never trained on --
+  applyhome:
+    role: "inference"              # invariant #3 — must not enter training
+    gateway: "api.odcloud.kr"      # odcloud; wants the DECODED service key
+    key_env: "APPLYHOME_API_KEY"
+    format: "json"
+    base_url: "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
+    operations:
+      apt_detail: "getAPTLttotPblancDetail"   # announcement-level
+      apt_model:  "getAPTLttotPblancMdl"       # per 주택형 -> 분양가 + 전용면적
+      # other housing types (not primary scope):
+      officetel_detail: "getUrbtyOfctlLttotPblancDetail"
+      remainder_detail: "getRemndrLttotPblancDetail"
+    request_params:
+      page: "page"
+      per_page: "perPage"          # max 1000
+      # cond[...] filters (region / date) applied per pull
+    join_key: "PBLANC_NO"          # detail <-> model join
+    detail_fields:                 # verified
+      announce_no: "PBLANC_NO"
+      house_name: "HOUSE_NM"
+      supply_region: "SUBSCRPT_AREA_CODE_NM"
+      house_kind: "HOUSE_SECD_NM"
+      total_units: "TOT_SUPLY_HSHLDCO"
+      notice_date: "RCRIT_PBLANC_DE"
+      receipt_begin: "RCEPT_BGNDE"
+      receipt_end: "RCEPT_ENDDE"
+      winner_announce: "PRZWNER_PRESNATN_DE"
+    model_fields:                  # TODO verify names in data.go.kr Swagger
+      house_type: "HOUSE_TY"          # 주택형
+      exclusive_area_m2: "SUPLY_AR"   # 공급/전용면적 — TODO verify
+      supply_price: "LTTOT_TOP_AMOUNT"  # 분양가/공급금액 — TODO verify
+      units: "SUPLY_HSHLDCO"          # TODO verify
+      move_in_ym: "MVN_PREARNGE_YM"   # 입주예정월 — TODO verify
+
 features:
   comp_radii_m: [500, 1000, 3000]
   comp_windows_days: [30, 60, 90]

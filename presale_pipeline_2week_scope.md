@@ -9,14 +9,14 @@
 | Original | 2-Week Version | Why |
 |---|---|---|
 | Nationwide | **Seoul + Gyeonggi cluster** | Volume + spatial-join tractability; parameterize region so nationwide is a config change, not a rewrite. Note: Seoul 분양권 volume is thinner (tighter 전매제한) — the Gyeonggi cluster carries the sample |
-| 4 primary + 2 spatial APIs | **2 primary** (MOLIT resale, Applyhome) + **2 supporting** (ECOS macro, VWorld/Kakao geocode) | MOLIT resale = training label; Applyhome = inference list only |
+| 4 primary + 2 spatial APIs | **2 label/comps primary** (MOLIT 분양권 resale, MOLIT 매매 sales) + **2 supporting** (ECOS macro, VWorld/Kakao geocode) + Applyhome (inference) | 분양권 resale = label; **매매 sales = nearby-actual-trade comps that value the new property**; Applyhome = inference list only |
 | Predict fair value V, derive premium | **Predict realized resale price directly** | Removes the hardest modeling problem (fundamental value ≠ market price); every pipeline stage stays intact |
 | S3/MinIO + Airflow + MLflow + Evidently + FastAPI + Streamlit + Docker | **DuckDB + Parquet, LightGBM, MLflow, Airflow, FastAPI + Streamlit, Docker**; Evidently optional | Local + free = zero cost. **Airflow is now a Must** (explicit learning goal); drop S3/MinIO and Evidently to make room |
 | LightGBM + XGBoost + CatBoost | **LightGBM only** | One model, tuned and evaluated properly, beats three half-done |
 
-**Key reframe:** Training runs entirely on **MOLIT 분양권전매 실거래가** (label = resale price per m²; features = property + spatial + macro + timing). This sidesteps the fuzzy subscription→resale join. Applyhome data is only ingested to produce the *"upcoming launches to score"* list for the dashboard.
+**Key reframe / modeling logic:** A new subscription has no trade history of its own, so its value is inferred from **nearby actual trades of completed properties** (MOLIT 매매 실거래가). Those comps are the core valuation signal; the model learns `nearby completed-property price level + property attributes + macro/timing → 분양권 resale price`. The **label** is the realized **MOLIT 분양권전매 실거래가** (resale price per m²) — i.e. what the pre-sale right actually resold for, which is what we ultimately compare to the base offering price. This keeps the label something actually traded (avoiding pure hedonic extrapolation) while making real nearby trades the valuation basis. Applyhome data is only ingested to produce the *"upcoming launches to score"* list for the dashboard.
 
-**Volume fallback (validate Day 1):** If 분양권 resale volume in the chosen region is too thin to train, switch the label to regular apartment/officetel **매매 실거래가** — identical pipeline, higher volume, the trading framing weakens to a README footnote.
+**Volume fallback (validate Day 1):** If 분양권 resale volume in Seoul+Gyeonggi is too thin to train, switch to the **hedonic branch** — train directly on the 매매 실거래가 comps (label = completed-property sale price per m²), apply the model to the new build to get an inferred value, and treat premium more loosely. Same pipeline and same data sources; the trading framing weakens to a README footnote (a completed-property price is not a pre-sale-right price).
 
 ---
 
@@ -24,7 +24,8 @@
 
 | Source | Role | Notes |
 |---|---|---|
-| MOLIT 분양권전매 실거래가 API | **Training label + features** | EUC-KR/UTF-8 auto-detect, XML parse, rate-limit + retry, backfill 2020→present |
+| MOLIT 분양권전매 실거래가 API | **Training label** (resale price per m²) | EUC-KR/UTF-8 auto-detect, XML parse, rate-limit + retry, backfill 2020→present |
+| MOLIT 아파트/오피스텔 매매 실거래가 API | **Primary comps — nearby actual trades that value the new property** | Same MOLIT API family (reuse encoding/retry patterns); high volume; feeds the spatial comp engine. Backfill 2020→present |
 | ECOS (Bank of Korea) | Macro features | Base rate, mortgage yield, M2 growth, sentiment — monthly |
 | VWorld / Kakao Local | Geocode complexes; nearest-station distance | Download static subway-station coordinates once |
 | Applyhome (청약홈) | **Inference list only** | Upcoming launches with base price + area to score in the dashboard |
@@ -34,7 +35,7 @@
 ## 3. Feature Set (trimmed)
 
 - **Property:** exclusive area, floor, building age, 전용률 (usable-space ratio), log(total units), developer tier (Top-10 brand vs regional).
-- **Spatial:** weighted avg comp price per m² within 500m / 1km / 3km over trailing 30/60/90d; straight-line distance to nearest station. **Dynamic radius expansion** for sparse areas (500m → 1km → 3km → district).
+- **Spatial (core valuation signal):** weighted avg **매매 실거래가** comp price per m² of nearby completed properties within 500m / 1km / 3km over trailing 30/60/90d; straight-line distance to nearest station. **Dynamic radius expansion** for sparse areas (500m → 1km → 3km → district). These comps are the primary driver of predicted value.
 - **Macro/temporal:** 6-month base-rate delta, months-to-completion.
 
 **Non-negotiable — point-in-time correctness:** a comp is only usable if `deal_date + reporting_lag (~30d) ≤ prediction_date`. Building this correctly is the single highest-signal thing in the project. A reviewer checks for exactly this.
@@ -67,11 +68,11 @@
 ## 5. Day-by-Day Plan (~14 intense days)
 
 ### Week 1 — Data & Features (the "data management" proof)
-- **Day 1** — Repo scaffold, config, secret handling. MOLIT extractor: pagination, encoding auto-detect, XML→DataFrame, `tenacity` retry, rate limit. Land Hive-partitioned Parquet. Pydantic schema. **Validate region volume (Seoul + Gyeonggi); commit region.** From the start, write each pipeline step (extract, feature-build, train) as an importable, single-purpose function/module — this makes wrapping them as Airflow tasks on Days 9–10 trivial instead of a refactor.
-- **Day 2** — Backfill 2020→present. ECOS macro extractor → monthly table. Data-quality checks (nulls, dtypes, dedupe).
+- **Day 1** — Repo scaffold, config, secret handling. MOLIT extractors for **both 분양권 resale (label) and 매매 sales (comps)** — same API family, so build one reusable client: pagination, encoding auto-detect, XML→DataFrame, `tenacity` retry, rate limit. Land Hive-partitioned Parquet. Pydantic schemas. **Validate 분양권 resale volume (Seoul + Gyeonggi); commit region + label branch.** From the start, write each pipeline step (extract, feature-build, train) as an importable, single-purpose function/module — this makes wrapping them as Airflow tasks on Days 9–10 trivial instead of a refactor.
+- **Day 2** — Backfill both MOLIT sources 2020→present (매매 volume is large — mind rate limits/pagination). ECOS macro extractor → monthly table. Data-quality checks (nulls, dtypes, dedupe).
 - **Day 3** — Geocode complexes (VWorld/Kakao); nearest-station distances from static station coords. Applyhome extractor for the inference list.
 - **Day 4** — Feature engineering pt.1: property features, macro joins (6m rate delta), time-to-completion.
-- **Day 5** — Feature engineering pt.2: spatial comps at 3 radii × 3 windows **with point-in-time filter**; dynamic radius expansion.
+- **Day 5** — Feature engineering pt.2: spatial comps **from 매매 실거래가** at 3 radii × 3 windows **with point-in-time filter**; dynamic radius expansion. This is the core valuation feature — spend the time here.
 - **Day 6** — Assemble unified matrix in DuckDB. Leakage audit + EDA sanity plots. Buffer.
 
 ### Week 2 — ML, MLOps, Serving
