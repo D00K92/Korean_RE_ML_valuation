@@ -6,6 +6,7 @@ region) and are queried through DuckDB. Keep raw and feature layers separate.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import duckdb
@@ -25,12 +26,21 @@ def connect() -> duckdb.DuckDBPyConnection:
 
 
 def init_db() -> None:
-    """Create the local data lake dirs + DuckDB file. Idempotent (make setup)."""
+    """Create the local data lake dirs + DuckDB file, load reference tables.
+
+    Idempotent (make setup). Rebuilds `ref_legal_dong` from the committed txt.
+    """
     settings = get_settings()
     for key in ("data_root", "raw_dir", "feature_dir"):
         Path(settings.get("paths", key, default=f"data/{key}")).mkdir(parents=True, exist_ok=True)
     con = connect()
     con.close()
+
+    # local import avoids a circular dependency (reference imports connect)
+    from presale.storage.reference import LEGAL_DONG_TXT, build_legal_dong_table
+
+    if LEGAL_DONG_TXT.exists():
+        build_legal_dong_table()
 
 
 def write_partitioned(df: pd.DataFrame, subdir: str) -> None:
@@ -51,6 +61,25 @@ def write_partitioned(df: pd.DataFrame, subdir: str) -> None:
         """
     )
     con.close()
+
+
+def write_region_parquet(df: pd.DataFrame, subdir: str, region: str) -> Path:
+    """Write one region's full frame as a SINGLE Parquet file, overwriting cleanly.
+
+    Partitions by region only (Hive dir `region=<code>/data.parquet`) — one file
+    per 시군구 instead of one per region-month, so the lake stays compact. The
+    `region` column is dropped from the body (it is encoded in the path and
+    reconstructed on read via hive_partitioning). Returns the file path.
+    """
+    raw_dir = Path(get_settings().get("paths", "raw_dir", default="data/raw"))
+    out = raw_dir / subdir / f"region={region}"
+    if out.exists():
+        shutil.rmtree(out)  # clean overwrite — never accumulate stale files
+    out.mkdir(parents=True, exist_ok=True)
+    body = df.drop(columns=["region"], errors="ignore")
+    path = out / "data.parquet"
+    body.to_parquet(path, index=False)
+    return path
 
 
 def read_parquet_glob(pattern: str) -> pd.DataFrame:

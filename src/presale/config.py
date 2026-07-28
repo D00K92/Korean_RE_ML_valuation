@@ -11,6 +11,7 @@ never returns raw key strings to callers that would print them. See the
 
 from __future__ import annotations
 
+import csv
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,27 @@ class Settings:
                 return default
             node = node[key]
         return node
+
+    def resolve_lawd_codes(self) -> list[str]:
+        """MOLIT 시군구 codes to ingest.
+
+        An explicit `region.lawd_codes` wins; otherwise codes are read from the
+        bundled reference table and filtered by `region.sido_prefixes` (so
+        expanding nationwide is a config change, not a code change).
+        """
+        explicit = self.get("region", "lawd_codes", default=[]) or []
+        if explicit:
+            return [str(c) for c in explicit]
+        prefixes = tuple(str(p) for p in self.get("region", "sido_prefixes", default=[]))
+        ref = self.get("region", "reference_file", default="data/reference/lawd_codes.csv")
+        path = PROJECT_ROOT / ref
+        codes: list[str] = []
+        with open(path, encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                code = row["lawd_cd"].strip()
+                if not prefixes or code.startswith(prefixes):
+                    codes.append(code)
+        return codes
 
 
 @lru_cache

@@ -6,9 +6,12 @@ __pycache__/
 .env
 *.key
 
-# local data lake — never commit
-data/
+# local data lake — never commit (data/* not data/, so negations below work)
+data/*
 !data/.gitkeep
+# ...except bundled reference inputs (static lookup tables, rebuildable sources)
+!data/reference/
+!data/reference/**
 
 # ml / tracking artifacts
 mlruns/
