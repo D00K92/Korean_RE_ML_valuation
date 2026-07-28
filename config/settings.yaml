@@ -3,19 +3,28 @@
 
 region:
   name: "seoul_gyeonggi"
-  # MOLIT 법정동 5-digit region codes (LAWD_CD). Seoul (11xxx) + Gyeonggi (41xxx).
-  # Fill with the specific sigungu codes for the committed cluster.
+  # Region is prefix-selected from the bundled 법정동 시군구 table
+  # (data/reference/lawd_codes.csv, 구-level for divided cities). To expand
+  # nationwide, just add 시도 prefixes here — no hardcoded code lists.
+  sido_prefixes: ["11", "41"]      # 11=서울특별시, 41=경기도
+  reference_file: "data/reference/lawd_codes.csv"
+  # Optional explicit override; when non-empty it wins over sido_prefixes.
   lawd_codes: []
 
 label:
-  source: "molit_presale_resale"   # 분양권전매 실거래가; per m² resale price
+  # Pooled 분양권 + 입주권 전매 실거래가 (both from the one SilvTrade feed),
+  # per m² resale price. right_type (ownershipGbn) is kept as a feature.
+  source: "molit_presale_resale"   # getRTMSDataSvcSilvTrade — 분양권 + 입주권 pooled
   unit: "krw_per_m2"
-  # Day-1 volume fallback: if resale volume is too thin, switch to apartment/officetel 매매.
+  right_types: ["분양권", "입주권"]  # ownershipGbn: empty=분양권, '입'=입주권
+  exclude_cancelled: true          # drop rows with cdealType set (해제 거래)
+  # Day-1 volume fallback: if pooled resale volume is too thin, add apartment 매매.
   fallback_source: "molit_apartment_trade"
 
 ingest:
   start_ym: "202001"               # backfill 2020 -> present
   reporting_lag_days: 30           # comp usable only if deal_date + lag <= prediction_date
+  trailing_refresh_months: 2       # always re-fetch the last N months (late-reported deals)
   rate_limit_qps: 2
   max_retries: 5
   retry_backoff_seconds: 2
@@ -33,22 +42,32 @@ sources:
     format: "xml"                  # chardet auto-detect (EUC-KR vs UTF-8)
     encoding_autodetect: true
     base_url: "https://apis.data.go.kr/1613000/RTMSDataSvcSilvTrade"
-    operation: "getRTMSDataSvcSilvTrade"   # 아파트 분양권전매 신고 자료
+    operation: "getRTMSDataSvcSilvTrade"   # 아파트 분양권·입주권 전매 신고 자료
+    key_is_encoded: false          # env holds the DECODED key; pass via params= (verified live)
     request_params:                # loop over LAWD_CD x DEAL_YMD
       lawd_cd: "LAWD_CD"           # 5-digit 시군구 (from region.lawd_codes)
       deal_ymd: "DEAL_YMD"         # YYYYMM
       page_no: "pageNo"
-      num_of_rows: "numOfRows"
-    response_fields:               # per-row (Korean source names)
-      complex_name: "단지명"
-      exclusive_area_m2: "전용면적"
-      floor: "층"
-      price: "거래금액"            # comma-formatted string
-      deal_year: "년"
-      deal_month: "월"
-      deal_day: "일"
-      dong: "법정동"
-      jibun: "지번"
+      num_of_rows: "numOfRows"     # set 1000 -> label region-months are always 1 page
+    # NOTE (verified live 2026-07-28): this endpoint returns BOTH 분양권 and 입주권
+    # transfers, with ENGLISH keys, EUC-KR XML. `ownershipGbn`: '입'=입주권,
+    # empty/None=분양권. Rows with `cdealType` set are 해제(cancelled) — exclude from label.
+    response_fields:               # per-row (real API keys, verified live)
+      complex_name: "aptNm"
+      exclusive_area_m2: "excluUseAr"   # m², floored to 2 d.p. on ingest
+      floor: "floor"
+      price: "dealAmount"               # kept in 만원 (sector standard), comma-formatted string
+      deal_year: "dealYear"
+      deal_month: "dealMonth"
+      deal_day: "dealDay"
+      dong: "umdNm"
+      jibun: "jibun"
+      sigungu_code: "sggCd"
+      sigungu_name: "sggNm"
+      right_type: "ownershipGbn"        # '입'=입주권 / empty=분양권
+      deal_channel: "dealingGbn"        # 중개거래 / 직거래
+      cancel_type: "cdealType"          # set => 해제 거래, exclude from label
+      cancel_date: "cdealDay"
     fallback:                      # Day-1 volume fallback -> apartment 매매
       base_url: "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade"
       operation: "getRTMSDataSvcAptTrade"
@@ -58,14 +77,14 @@ sources:
     role: "macro"
     key_env: "ECOS_API_KEY"
     format: "json"
-    # StatisticSearch/{KEY}/{format}/kr/{start}/{end}/{STAT}/{cycle}/{s}/{e}/{item}
+    # path API: StatisticSearch/{KEY}/{format}/kr/{start}/{end}/{STAT}/{cycle}/{s}/{e}/{item}
     base_url: "https://ecos.bok.or.kr/api/StatisticSearch"
     cycle: "M"                     # monthly
-    series:                        # STAT_CODE / ITEM_CODE — TODO verify vs live ECOS
-      base_rate:      { stat_code: "722Y001", item_code: "0101000" }  # 한국은행 기준금리
-      mortgage_yield: { stat_code: "121Y002", item_code: "" }        # 예금은행 주담대 금리
-      m2:             { stat_code: "101Y004", item_code: "" }        # M2 통화량
-      sentiment_csi:  { stat_code: "511Y002", item_code: "" }        # 소비자심리지수
+    series:                        # STAT_CODE / ITEM_CODE — verified live 2026-07-28
+      base_rate:     { stat_code: "722Y001", item_code: "0101000",   unit: "연%",   desc: "한국은행 기준금리" }
+      mortgage_rate: { stat_code: "121Y006", item_code: "BECBLA0302", unit: "연리%", desc: "예금은행 주택담보대출금리(신규취급액)" }
+      m2:            { stat_code: "161Y006", item_code: "BBHA00",     unit: "십억원", desc: "M2(평잔, 원계열)" }
+      sentiment_csi: { stat_code: "511Y002", item_code: "FME",       unit: "지수",   desc: "소비자심리지수(CCSI)" }
 
   # -- VWorld Geocoder 2.0 -- complex address -> lat/lon (geocode once, cache) --
   geocode:
