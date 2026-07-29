@@ -41,6 +41,7 @@ class Secrets(BaseSettings):
     vworld_api_key: str = ""
     kakao_rest_api_key: str = ""
     applyhome_api_key: str = ""
+    neis_api_key: str = ""
     mlflow_tracking_uri: str = "sqlite:///mlflow.db"
     mlflow_artifact_root: str = "./mlartifacts"
 
@@ -98,14 +99,21 @@ class Settings:
         if explicit:
             return [str(c) for c in explicit]
         prefixes = tuple(str(p) for p in self.get("region", "sido_prefixes", default=[]))
+        exclude = {str(c) for c in (self.get("region", "exclude_codes", default=[]) or [])}
+        include = [str(c) for c in (self.get("region", "include_codes", default=[]) or [])]
         ref = self.get("region", "reference_file", default="data/reference/lawd_codes.csv")
         path = PROJECT_ROOT / ref
         codes: list[str] = []
         with open(path, encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
                 code = row["lawd_cd"].strip()
-                if not prefixes or code.startswith(prefixes):
+                if (not prefixes or code.startswith(prefixes)) and code not in exclude:
                     codes.append(code)
+        # extra codes not derivable from the (stale) reference table — e.g. the
+        # 구-level codes MOLIT keys 부천/화성 data under (see settings.yaml).
+        for code in include:
+            if code not in exclude and code not in codes:
+                codes.append(code)
         return codes
 
 

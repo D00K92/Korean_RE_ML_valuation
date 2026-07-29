@@ -8,6 +8,32 @@ region:
   # nationwide, just add 시도 prefixes here — no hardcoded code lists.
   sido_prefixes: ["11", "41"]      # 11=서울특별시, 41=경기도
   reference_file: "data/reference/lawd_codes.csv"
+  # Scope = 수도권 core: all Seoul + Gyeonggi EXCEPT far exurbs weakly linked to
+  # the Seoul market. Remove entries here to widen toward full Gyeonggi.
+  exclude_codes:
+    - "41220"  # 평택시
+    - "41250"  # 동두천시
+    - "41500"  # 이천시
+    - "41550"  # 안성시
+    - "41650"  # 포천시
+    - "41670"  # 여주시
+    - "41800"  # 연천군
+    - "41820"  # 가평군
+    - "41830"  # 양평군
+    # merged codes that return NO MOLIT data — replaced by 구-level codes below
+    - "41190"  # 부천시 (data under 41192/41194/41196)
+    - "41590"  # 화성시 (data under 41591/41593/41595/41597)
+  # 구-level codes MOLIT actually keys 부천/화성 data under (not in the reference
+  # table): 부천 abolished its 구 in 2016 but MOLIT kept the old codes; 화성 became
+  # a 특례시 in 2025 and MOLIT migrated its data to new 구 codes.
+  include_codes:
+    - "41192"  # 부천 원미(중·상동)
+    - "41194"  # 부천 소사(소사본동)
+    - "41196"  # 부천 오정(원종동)
+    - "41591"  # 화성 남양·향남
+    - "41593"  # 화성 봉담
+    - "41595"  # 화성 병점·진안
+    - "41597"  # 화성 동탄(여울·영천동)
   # Optional explicit override; when non-empty it wins over sido_prefixes.
   lawd_codes: []
 
@@ -22,7 +48,7 @@ label:
   fallback_source: "molit_apartment_trade"
 
 ingest:
-  start_ym: "202001"               # backfill 2020 -> present
+  start_ym: "201601"               # backfill 2016 -> present (pre-전매제한 boom era)
   reporting_lag_days: 30           # comp usable only if deal_date + lag <= prediction_date
   trailing_refresh_months: 2       # always re-fetch the last N months (late-reported deals)
   rate_limit_qps: 2
@@ -146,6 +172,26 @@ sources:
       supply_price: "LTTOT_TOP_AMOUNT"  # 분양가/공급금액 — TODO verify
       units: "SUPLY_HSHLDCO"          # TODO verify
       move_in_ym: "MVN_PREARNGE_YM"   # 입주예정월 — TODO verify
+
+  # -- NEIS 학교기본정보 -- school locations for 학군/amenity features --
+  neis:
+    role: "amenity"                # static reference; geocoded then -> spatial features
+    key_env: "NEIS_API_KEY"
+    format: "json"
+    base_url: "https://open.neis.go.kr/hub/schoolInfo"
+    office_codes: ["B10", "J10"]   # B10=서울특별시교육청, J10=경기도교육청
+    page_size: 1000               # NEIS max pSize
+    # NEIS gives 도로명주소 only (no lat/lon) -> geocode ORG_RDNMA via VWorld (ROAD)
+    response_fields:
+      school_code: "SD_SCHUL_CODE"
+      name: "SCHUL_NM"
+      school_type: "SCHUL_KND_SC_NM"   # 초등학교 / 중학교 / 고등학교 / ...
+      foundation: "FOND_SC_NM"         # 공립 / 사립
+      office: "ATPT_OFCDC_SC_NM"
+      sido: "LCTN_SC_NM"
+      road_address: "ORG_RDNMA"
+      road_address_detail: "ORG_RDNDA"
+      coedu: "COEDU_SC_NM"
 
 features:
   comp_radii_m: [500, 1000, 3000]
