@@ -31,3 +31,6 @@ standalone_admin_password.txt
 .ruff_cache/
 .mypy_cache/
 .ipynb_checkpoints/
+
+# raw transit reference downloads (bulky) — derived .parquet is force-added instead
+data/reference/*_all_lines_*.csv

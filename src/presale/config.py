@@ -42,6 +42,7 @@ class Secrets(BaseSettings):
     kakao_rest_api_key: str = ""
     applyhome_api_key: str = ""
     neis_api_key: str = ""
+    schoolinfo_api_key: str = ""
     mlflow_tracking_uri: str = "sqlite:///mlflow.db"
     mlflow_artifact_root: str = "./mlartifacts"
 
