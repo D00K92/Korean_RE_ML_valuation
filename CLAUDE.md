@@ -16,7 +16,7 @@ These are the things a reviewer checks first. Breaking one silently invalidates 
 
 1. **No look-ahead in features.** A comparable transaction is usable for a row only if `comp.deal_date + reporting_lag (~30 days) <= row.prediction_date`. Never join a comp that was not yet publicly reported as of the row's date. When in doubt, exclude.
 2. **Time-based split only.** Split train/val/test by `deal_date` — the test set is the most recent slice. **Never** use random shuffling or `train_test_split(shuffle=True)`. All reported metrics must be on the held-out time-based test set.
-3. **Label source is MOLIT 분양권전매 실거래가** (resale price per m²). **Applyhome data is inference-only** — it produces the "upcoming launches to score" list and must never enter training.
+3. **Label source is MOLIT 분양권전매 실거래가** (resale price per m²) — the label is *never* sourced from Applyhome. **Applyhome (청약홈) MAY enrich features on both training and inference**, but only with attributes *fixed at 분양(launch) time* — 분양가, 입주예정일, 세대수, 건설사/brand. Such a field may join to a MOLIT resale row only when `공고일 <= deal_date` (no look-ahead); encode this as a test. Fields unknown at launch (경쟁률, 청약 결과, any post-subscription outcome) must **never** enter training. 분양가 additionally serves as the dashboard's premium baseline (display only). Applyhome still produces the "upcoming launches to score" inference list. *(Owner-approved 2026-07-29; supersedes the prior "inference-only" rule.)*
 4. **Local and zero-cost.** No S3/MinIO, no cloud services, no paid APIs. DuckDB + local Parquet only.
 
 Encode #1 and #2 as tests (see Testing). If a task cannot be done without breaking an invariant, stop and flag it — do not work around it.
