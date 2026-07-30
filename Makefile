@@ -1,4 +1,4 @@
-.PHONY: setup ingest backfill features train test lint up down
+.PHONY: setup ingest backfill refresh features train test lint up down
 
 setup:            ## install deps, init duckdb, copy .env.example -> .env
 	uv sync
@@ -10,6 +10,9 @@ ingest:           ## run extractors for the configured region (latest)
 
 backfill:         ## historical ingest 2020 -> present
 	uv run python -m presale.extract.molit --mode backfill
+
+refresh:          ## daily incremental: re-fetch trailing window + update ledger
+	uv run python scripts/refresh_realtime.py
 
 features:         ## build unified feature matrix
 	uv run python -m presale.features.build
