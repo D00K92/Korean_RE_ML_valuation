@@ -23,6 +23,21 @@ from presale.storage.duckdb_io import connect
 LEGAL_DONG_TXT = PROJECT_ROOT / "data" / "reference" / "legal_dong_codes.txt"
 LEGAL_DONG_TABLE = "ref_legal_dong"
 
+# transit reference tables (data.go.kr standard files, cleaned to parquet — see
+# memory transport-reference-data / docs). station coords for distance features.
+SUBWAY_STATIONS = PROJECT_ROOT / "data" / "reference" / "subway_stations.parquet"
+BUS_STOPS = PROJECT_ROOT / "data" / "reference" / "bus_stops.parquet"
+
+
+def load_subway_stations() -> pd.DataFrame:
+    """Nationwide metro stations: station_name, line, lat, lon, transfer_gbn."""
+    return pd.read_parquet(SUBWAY_STATIONS)
+
+
+def load_bus_stops() -> pd.DataFrame:
+    """수도권+부산 bus stops: stop_name, lat, lon, city."""
+    return pd.read_parquet(BUS_STOPS)
+
 
 def _level(code: str) -> str:
     if code[2:] == "0" * 8:
