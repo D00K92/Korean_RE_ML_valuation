@@ -7,7 +7,7 @@ region:
   # (data/reference/lawd_codes.csv, now nationwide). To expand further, just add
   # 시도 prefixes here — no hardcoded code lists. Scope = every 특별/광역/특별자치시
   # (서울·부산·대구·인천·광주·대전·울산·세종) + 경기도.
-  sido_prefixes: ["11", "41", "28", "26", "27", "30", "29", "31", "36"]
+  sido_prefixes: ["11", "41", "28", "26", "27", "30", "29", "31", "36", "50"]
   reference_file: "data/reference/lawd_codes.csv"
   # Scope = 수도권 core: all Seoul + Gyeonggi EXCEPT far exurbs weakly linked to
   # the Seoul market. Remove entries here to widen toward full Gyeonggi.
@@ -175,7 +175,7 @@ sources:
     gateway: "api.odcloud.kr"      # odcloud; DECODED key. The data.go.kr ACCOUNT
     key_env: "APPLYHOME_API_KEY"   # key (MOLIT_API_KEY) also works — extractor falls back to it
     # SUBSCRPT_AREA_CODE_NM filter; data is 2020+
-    region_names: ["서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종"]
+    region_names: ["서울", "경기", "인천", "부산", "대구", "대전", "광주", "울산", "세종", "제주"]
     format: "json"
     base_url: "https://api.odcloud.kr/api/ApplyhomeInfoDetailSvc/v1"
     operations:
@@ -213,6 +213,15 @@ sources:
       base_url: "https://api.odcloud.kr/api/ApplyhomeInfoCmpetRtSvc/v1"   # precedes resale)
       operation: "getAPTLttotPblancCmpet"   # PBLANC_NO x HOUSE_TY x 순위 x 거주지역
       raw_subdir: "applyhome_competition"
+    gonggo:                        # 입주자모집공고문 PDF — regulatory-regime enrichment
+      role: "enrichment"           # 전매제한/분양가상한제/실거주의무/규제지역 (fixed at 공고;
+      #                              leakage-guarded 공고일 <= deal_date, same as other 청약홈)
+      min_year: 2024               # summary-box format consistent 2024+ (verified 40-doc sample)
+      detail_page: "https://www.applyhome.co.kr/ai/aia/selectAPTLttotPblancDetail.do"
+      attach_base: "https://static.applyhome.co.kr/ai/aia/"   # PDF host; NO API key needed
+      cache_dir: "data/raw/gonggo/pdf_cache"   # downloaded PDFs cached (idempotent re-runs)
+      raw_subdir: "gonggo"
+      # LH 신혼희망타운/공공분양 often publish image-only PDFs -> skipped, land null.
 
   # -- NEIS 학교기본정보 -- school locations for 학군/amenity features --
   neis:
@@ -221,7 +230,7 @@ sources:
     format: "json"
     base_url: "https://open.neis.go.kr/hub/schoolInfo"
     # 서울 경기 인천 부산 대구 대전 광주 울산 세종 교육청
-    office_codes: ["B10", "J10", "E10", "C10", "D10", "G10", "F10", "H10", "I10"]
+    office_codes: ["B10", "J10", "E10", "C10", "D10", "G10", "F10", "H10", "I10", "T10"]
     page_size: 1000               # NEIS max pSize
     # NEIS gives 도로명주소 only (no lat/lon) -> geocode ORG_RDNMA via VWorld (ROAD)
     response_fields:

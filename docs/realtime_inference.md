@@ -1,8 +1,10 @@
 # Real-time inference & the slow ↔ fast data line
 
-Status: **advisory / roadmap** (2026-07-29). Captures which datasets are static vs
-time-varying, and what real-time signal could feed live inference. Nothing here is
-built yet; it guides the serving layer (Day 11–12) and future feature work.
+Status: **partially built** (updated 2026-07-30). Captures which datasets are static
+vs time-varying, and what real-time signal feeds live inference. The **MOLIT 실거래가
+daily refresh is now built** (see "What's fetchable today" below and
+docs/daily_incremental_job.md); the remaining FAST/event-driven sources are still
+roadmap and guide the serving layer (Day 11–12) and future feature work.
 
 ## The core distinction
 
@@ -16,6 +18,27 @@ a few do.
 counterpart computed with the same point-in-time rule (as-of `deal_date`). A live
 signal with no leakage-safe historical analog **cannot be trained on** — it would
 be a feature the model never saw. Same discipline as the 청약홈/경쟁률 guards.
+
+---
+
+## What's fetchable *today* (built) vs. roadmap
+
+A quick answer to "what can we actually fetch for real-time value inference right now":
+
+| Signal | Fetchable now? | How | Point-in-time analog |
+|---|---|---|---|
+| **MOLIT 실거래가 comps** (freshest nearby apt sales) | ✅ **BUILT** | `make refresh` / `molit_realtime_refresh` DAG → daily trailing-window re-fetch + first-seen ledger | comps filtered by `first_seen_date ≤ prediction_date` — **exact**, no +30d guess |
+| **MOLIT 분양권 label freshness** (updates the "resold rights" scoring universe) | ✅ **BUILT** | same daily job, `label` feed | ledger tracks first-seen / 해제 / 등기 per deal |
+| **cancellation-rate signal** (해제 / reports, demand weakness) | ✅ derivable | ledger `cancelled_date` vs `first_seen_date` per 시군구 | same ledger, as-of any past date |
+| ECOS macro (monthly print) | ✅ existing extractor | pull latest monthly value at inference | as-of `deal_date` |
+| 청약홈 launch facts + 경쟁률 (enrich scoring list) | ⚠️ partial | odcloud — **분양정보 svc in outage; 경쟁률 svc healthy**; covers 6 of 9 시도 (missing 울산·세종·광주 until recovery) | 공고일 ≤ deal_date guard (invariant #3); null-safe when absent |
+| R-ONE 주간 가격동향, ECOS daily 국고채, Naver DataLab | ❌ roadmap | official free APIs, not yet wired | see FAST table below |
+| 네이버 부동산 호가·매물 | ❌ excluded | no official free API (ToS / zero-cost) | — |
+
+**Real-time inference today** = static features from the batch lake **+** fresh MOLIT
+comps as-of now (the daily refresh keeps the lake current; the ledger lets us filter
+comps to exactly what was publicly visible by the prediction date). Everything else
+in the FAST/event-driven tiers below is designed but not yet built.
 
 ---
 
@@ -43,7 +66,7 @@ be a feature the model never saw. Same discipline as the 청약홈/경쟁률 gua
 ### FAST — genuinely time-varying, benefit from freshness at inference
 | Dataset | Signal | Cadence | Access |
 |---|---|---|---|
-| **MOLIT 실거래가 (comps)** | freshest nearby sales — the core spatial feature | daily (30d report lag) | ✅ same extractor, run live |
+| **MOLIT 실거래가 (comps)** | freshest nearby sales — the core spatial feature | daily (30d report lag) | ✅ **BUILT** — daily refresh + first-seen ledger |
 | **한국부동산원 R-ONE 주간 가격동향** | market momentum by 시군구 (rising/cooling now) | weekly (Thu) | ✅ official OpenAPI (new) |
 | **ECOS daily 국고채 yield** | rate leading indicator (moves before monthly mortgage) | daily | ✅ have ECOS key |
 | 네이버 DataLab 검색 트렌드 | demand nowcast (search interest in region/complex) | daily | ✅ free Naver API (new key) |
@@ -66,9 +89,11 @@ be a feature the model never saw. Same discipline as the 청약홈/경쟁률 gua
 
 Three upgrades, all reusing access we already have or free official APIs:
 
-1. **Fresh comps** — at inference, run the MOLIT 실거래가 extractor live so spatial
-   comp features reflect sales up to today (not the training snapshot). Highest
-   value, zero new source. Training analog: comps already point-in-time filtered.
+1. **Fresh comps** — ✅ **BUILT** (2026-07-30). The `molit_realtime_refresh` daily job
+   re-fetches the MOLIT 실거래가 trailing window and updates a first-seen ledger, so
+   spatial comp features reflect sales up to today (not the training snapshot) and
+   can be filtered to exactly what was publicly visible as-of the prediction date.
+   Highest value, zero new source. See docs/daily_incremental_job.md.
 2. **Weekly momentum** — add R-ONE 주간 아파트가격지수 for the property's 시군구.
    Training analog: join the index as-of each row's `deal_date` week.
 3. **Daily rate lead** — use ECOS daily 국고채 yield instead of the monthly mortgage
@@ -82,5 +107,10 @@ from the batch lake, (b) fetch/refresh the FAST features as-of *now*, (c) assemb
 the same vector the model trained on. Cache FAST pulls (e.g. comps per 시군구,
 weekly index) so concurrent requests don't re-hit the APIs.
 
+The **scoring universe itself** (which upcoming 분양 launches to score, with location /
+slots / types / 분양가 / odds) is specified in docs/upcoming_launches.md — the
+inference end of this slow↔fast line.
+
 Related: [[transport-reference-data]] (static infra), docs/applyhome_features.md
-(event-driven 경쟁률), docs/work_area_accessibility.md, docs/cancellation_reoffer_feature.md.
+(event-driven 경쟁률), docs/upcoming_launches.md (scoring universe),
+docs/work_area_accessibility.md, docs/cancellation_reoffer_feature.md.

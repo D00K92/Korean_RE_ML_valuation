@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 .env
 *.key
+.claude/
 
 # local data lake — never commit (data/* not data/, so negations below work)
 data/*
