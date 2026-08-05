@@ -112,7 +112,7 @@ deviation 분양가 cannot.
 - `extract/applyhome.py` — `extract()` (분양정보) + `extract_competition()` (경쟁률 raw).
 - `schemas/applyhome.py`, `features/enrich.py` — `enrich_labels(labels, applyhome,
   competition=None)` attaches sections A + B; `aggregate_competition()` collapses to
-  per-(PBLANC, 전용) metrics. `tests/test_enrich.py` (5 tests incl. leakage guard).
+  per-(PBLANC, 전용) metrics. `ml_pipeline/tests/test_enrich.py` (5 tests incl. leakage guard).
 - Config `ApplyhomeInfoCmpetRtSvc` block is `role: feature`.
 - Verified end-to-end: 22.9k label rows enriched, competition Spearman ρ=0.28
   reproduced on the built pipeline, null-safe, 0 leakage violations.

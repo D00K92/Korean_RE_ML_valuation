@@ -28,7 +28,7 @@ Candidate features (join to matched label complex by PBLANC/name+area):
 ## Leakage discipline (invariant #3)
 Post-original-subscription outcome → **only join when the re-offer 공고일 ≤ resale
 deal_date** (same guard as 경쟁률). A re-offer that happened *after* the resale must
-never enter that row. Encode as a test, mirroring `tests/test_enrich.py`.
+never enter that row. Encode as a test, mirroring `ml_pipeline/tests/test_enrich.py`.
 
 ## Open question — matching key
 Re-offer 공고 has its **own PBLANC_NO** (≠ the original 분양 PBLANC). So joining to a

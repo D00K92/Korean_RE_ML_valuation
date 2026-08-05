@@ -1,0 +1,57 @@
+name: deploy-ml-pipeline
+
+# ML pillar CI/CD: lint + test, then compile the Vertex AI (KFP v2) pipeline and
+# submit it on push to main. Auth uses Workload Identity Federation (no keys):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT
+# Config comes from env: GCP_PROJECT_ID, GCS_BUCKET, BQ_DATASET, VERTEX_PIPELINE_ROOT.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ml_pipeline/**"
+      - "config.yaml"
+      - ".github/workflows/deploy_ml_pipeline.yaml"
+  pull_request:
+    paths:
+      - "ml_pipeline/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Sync deps (incl. ml group)
+        run: uv sync --group ml
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Test
+        run: uv run pytest -q
+      - name: Compile Vertex pipeline
+        run: uv run python -m ml_pipeline.pipeline
+
+  submit:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # for Workload Identity Federation
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCS_BUCKET: ${{ vars.GCS_BUCKET }}
+      BQ_DATASET: ${{ vars.BQ_DATASET }}
+      VERTEX_PIPELINE_ROOT: ${{ vars.VERTEX_PIPELINE_ROOT }}
+      ML_PIPELINE_IMAGE: ${{ vars.ML_PIPELINE_IMAGE }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Sync deps (incl. ml group)
+        run: uv sync --group ml
+      - name: Submit pipeline to Vertex AI
+        run: uv run python -c "from ml_pipeline.pipeline import submit; print(submit())"

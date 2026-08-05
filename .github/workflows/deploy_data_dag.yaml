@@ -1,0 +1,43 @@
+name: deploy-data-dag
+
+# Data pillar CI/CD: lint + test on every push touching the data pipeline, and
+# deploy the Astro project (ingest DAGs) on push to main. Secrets:
+#   ASTRO_API_TOKEN, ASTRO_DEPLOYMENT_ID  (Astro deploy)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data_pipeline/**"
+      - "config.yaml"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "packages.txt"
+      - ".github/workflows/deploy_data_dag.yaml"
+  pull_request:
+    paths:
+      - "data_pipeline/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Sync deps
+        run: uv sync
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Test (includes leakage + split invariants)
+        run: uv run pytest -q
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Astro
+        uses: astronomer/deploy-action@v0
+        with:
+          deployment-id: ${{ secrets.ASTRO_DEPLOYMENT_ID }}
+          # ASTRO_API_TOKEN is read from the environment by the action
