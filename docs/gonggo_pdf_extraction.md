@@ -78,8 +78,9 @@ Every field is **fixed at 공고 time**, so it joins to a resale row only when
 1. `src/presale/schemas/gonggo.py` — `GonggoRegulatory` (년/개월/없음→months, 적용→bool).
 2. `src/presale/extract/gonggo.py` — `download_gonggo` (scrape+cache), `parse_regulatory`
    (table + text fallback), `extract(launches)` → land `data/raw/gonggo/`.
-3. `scripts/fetch_gonggo.py` — `--limit`; reads 2024+ launches from the applyhome lake.
-4. `tests/test_gonggo.py` — months/bool normalisation, coherence, fallback, URL scrape.
+3. `data_pipeline/scripts/fetch.py --source gonggo [--limit N]` — launch universe from
+   `extract.gonggo.list_launches` (2024+ from the applyhome lake).
+4. `data_pipeline/tests/test_gonggo.py` — months/bool normalisation, coherence, fallback, URL scrape.
 5. Config `sources.applyhome.gonggo` (min_year 2024, cache_dir, hosts).
 
 ## Follow-up (not blocking)

@@ -1,0 +1,23 @@
+# Data pillar deps — added on top of the Astro Runtime base image (which already
+# provides Apache Airflow). Mirrors pyproject's default + "airflow" group.
+apache-airflow-providers-google>=10.24   # GCS + BigQuery operators/hooks
+google-cloud-bigquery>=3.25
+google-cloud-storage>=2.18
+gcsfs>=2024.10
+db-dtypes>=1.3
+pyarrow>=18.0
+pandas>=2.2
+numpy>=2.1
+# ingestion
+httpx>=0.28
+requests>=2.32
+tenacity>=9.0
+chardet>=5.2
+lxml>=5.3
+xmltodict>=0.14
+pypdf>=5.1
+pdfplumber>=0.11
+pydantic>=2.9
+pydantic-settings>=2.6
+pyyaml>=6.0
+python-dotenv>=1.2.2

@@ -93,8 +93,8 @@ active this week" and pipeline health checks.
 2. `dags/realtime_refresh_dag.py` — TaskFlow `@dag` `molit_realtime_refresh`,
    `schedule="@daily"`, `catchup=False`, `max_active_runs=1`; two feed tasks
    (label serialised before comps for the shared MOLIT rate limit) → `write_daily_audit`.
-3. `scripts/refresh_realtime.py` + `make refresh`.
-4. `tests/test_realtime.py` — first-seen + idempotency, cancel/등기 transition,
+3. `data_pipeline/scripts/refresh.py` + `make refresh`.
+4. `data_pipeline/tests/test_realtime.py` — first-seen + idempotency, cancel/등기 transition,
    outage safety, label normaliser. (54 tests pass overall.)
 5. Config `ingest.trailing_refresh_months: 3`; `realtime.{feeds,ledger_dir,delta_dir}`.
 

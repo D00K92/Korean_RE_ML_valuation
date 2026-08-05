@@ -5,21 +5,26 @@ __pycache__/
 .DS_Store
 .env
 *.key
+# GCP service-account keys — mounted into Airflow, never committed
+secrets/
+*-sa.json
+*.json.key
 .claude/
 
-# local data lake — never commit (data/* not data/, so negations below work)
-data/*
-!data/.gitkeep
-# ...except bundled reference inputs (static lookup tables, rebuildable sources)
-!data/reference/
-!data/reference/**
+# no local data/ lake — all data is queried from GCS/BigQuery; reference lookups
+# are GCS-backed (gs://<bucket>/reference/) and cached under .cache/ (below)
+data/
 
-# ml / tracking artifacts
-mlruns/
-mlartifacts/
-*.duckdb
+# ml / pipeline artifacts
 *.parquet
 *.pkl
+*_pipeline.json        # compiled KFP/Vertex pipeline spec (build artifact)
+
+# astro / local airflow
+.astro/
+
+# cloud-backed reference cache (fetched from gs://<bucket>/reference/)
+.cache/
 
 # airflow
 logs/
@@ -32,6 +37,3 @@ standalone_admin_password.txt
 .ruff_cache/
 .mypy_cache/
 .ipynb_checkpoints/
-
-# raw transit reference downloads (bulky) — derived .parquet is force-added instead
-data/reference/*_all_lines_*.csv
