@@ -90,6 +90,17 @@ gitignored `data/` dir before the GCS/BigQuery push, and static reference lookup
 under `.cache/reference/` by `data_pipeline/warehouse/refstore.py` (tests set
 `REFERENCE_DIR` to read `data_pipeline/tests/fixtures/reference/` offline).
 
+**No new root-level folders.** Every source, DAG, test, and script belongs under
+its pillar (`data_pipeline/` or `ml_pipeline/`), never at the repo root. The only
+committed top-level entries are the ones already in the tree above (config, docs,
+build files, the two pillar dirs, `notebooks/`). In particular: DAGs live in
+`data_pipeline/dags/` (the Dockerfile repoints `AIRFLOW__CORE__DAGS_FOLDER` there)
+and DAG/warehouse tests in `data_pipeline/tests/` — **not** in a root `dags/` or
+`tests/`. `astro dev init`/`astro dev start` scaffold a root `dags/` and `tests/`
+by convention; both are `.gitignore`d so they can never re-enter the tracked repo.
+If a task seems to need a new root folder, put it under a pillar instead, or stop
+and flag it.
+
 ---
 
 ## Conventions

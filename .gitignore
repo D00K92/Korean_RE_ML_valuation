@@ -22,6 +22,11 @@ data/
 
 # astro / local airflow
 .astro/
+# Astro scaffolds ./dags and ./tests at root, but our DAGs live in
+# data_pipeline/dags (DAGS_FOLDER is repointed there) and DAG tests in
+# data_pipeline/tests. Ignore the root scaffolds so they never re-clutter the repo.
+/dags/
+/tests/
 
 # cloud-backed reference cache (fetched from gs://<bucket>/reference/)
 .cache/
