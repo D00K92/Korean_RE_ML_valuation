@@ -1,1 +1,0 @@
-# OS-level packages for the Astro Runtime image (apt). None required.

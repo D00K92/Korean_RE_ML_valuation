@@ -1,3 +1,0 @@
-# Astro Runtime installs this at image build. The data-pillar deps live in
-# data_pipeline/requirements.txt (single source of truth); pull them in here.
--r data_pipeline/requirements.txt
